@@ -1,0 +1,36 @@
+# Director Agent Configuration
+# ─────────────────────────────────────────────────────────────────────────────
+# Place this file at:
+#   {DEER_FLOW_HOME}/agents/director/config.yaml
+#   (default: backend/.deer-flow/agents/director/config.yaml)
+#
+# Activate by sending  agent_name: "director"  in the run request, or by
+# selecting the "Director" agent in the DeerFlow web UI.
+
+name: director
+description: >
+  Creative media director agent that helps users produce images and videos
+  end-to-end: from ideation and script writing through storyboard design,
+  shot-by-shot image generation, video clip generation, audio mixing,
+  subtitle addition, and final video assembly.
+
+# Model override — set to a vision-capable model so the agent can inspect
+# generated images via the view_image tool. Leave null to use the global default.
+model: null   # e.g. "claude-opus-4-6" or "gpt-4o"
+
+# Tool groups this agent is allowed to use.
+# "media" and "media:edit" are the director-specific groups.
+# "web", "file:read", "file:write" are standard DeerFlow groups.
+# Remove "bash" if you want a sandboxed, no-shell director.
+tool_groups:
+  - web          # image_search, web_fetch (reference research)
+  - file:read    # ls, read_file, glob, grep (inspect generated assets)
+  - file:write   # write_file, str_replace (write scripts, SRT files)
+  - bash         # ffmpeg availability check, shell scripting
+  - media        # generate_image, generate_video_from_text, check_media_task, …
+  - media:edit   # trim_video, merge_videos, add_audio_to_video, …
+
+# Skill allowlist — restrict to director-relevant skills only.
+# null = all enabled skills. [] = no skills. ["director"] = only director skill.
+skills:
+  - director

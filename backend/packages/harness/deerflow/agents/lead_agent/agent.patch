@@ -1,0 +1,80 @@
+--- a/backend/packages/harness/deerflow/agents/lead_agent/agent.py
++++ b/backend/packages/harness/deerflow/agents/lead_agent/agent.py
+@@ -1,6 +1,7 @@
+ import logging
+
+ from langchain.agents import create_agent
+ from langchain.agents.middleware import AgentMiddleware
+ from langchain_core.runnables import RunnableConfig
+
+ from deerflow.agents.lead_agent.prompt import apply_prompt_template
+ from deerflow.agents.memory.summarization_hook import memory_flush_hook
+ from deerflow.agents.middlewares.clarification_middleware import ClarificationMiddleware
++from deerflow.agents.middlewares.media_progress_middleware import MediaProgressMiddleware
+ from deerflow.agents.middlewares.loop_detection_middleware import LoopDetectionMiddleware
+ from deerflow.agents.middlewares.memory_middleware import MemoryMiddleware
+ from deerflow.agents.middlewares.subagent_limit_middleware import SubagentLimitMiddleware
+
+@@ -insert after the SubagentLimitMiddleware append block, before LoopDetectionMiddleware @@
+     # Add MediaProgressMiddleware for the Director Agent (or any agent with media tools).
+     # Provides progress feedback and async task guidance for image/video generation calls.
+     _agent_tool_groups = agent_config.tool_groups if agent_config else None
+     _has_media_tools = (
+         agent_name == "director"
+         or (_agent_tool_groups is not None and any(
+             g.startswith("media") for g in _agent_tool_groups
+         ))
+     )
+     if _has_media_tools:
+         middlewares.append(MediaProgressMiddleware())
+         logger.info("MediaProgressMiddleware enabled for agent '%s'", agent_name or "default")
+
+INSTRUCTIONS FOR APPLYING THIS PATCH:
+======================================
+Open: backend/packages/harness/deerflow/agents/lead_agent/agent.py
+
+1. Add the import at the top (after other middleware imports):
+
+    from deerflow.agents.middlewares.media_progress_middleware import MediaProgressMiddleware
+
+2. In the _build_middlewares() function, find this comment:
+    # LoopDetectionMiddleware — detect and break repetitive tool call loops
+
+   INSERT the following block BEFORE that line:
+
+    # Add MediaProgressMiddleware for Director Agent (or any agent with media tool groups).
+    _agent_tool_groups = agent_config.tool_groups if agent_config else None
+    _has_media_tools = (
+        agent_name == "director"
+        or (_agent_tool_groups is not None and any(
+            g.startswith("media") for g in _agent_tool_groups
+        ))
+    )
+    if _has_media_tools:
+        middlewares.append(MediaProgressMiddleware())
+        logger.info("MediaProgressMiddleware enabled for agent '%s'", agent_name or "default")
+
+3. The _build_middlewares signature already receives agent_config via agent_name lookup,
+   but to pass agent_config we need to load it. Here's the full context:
+
+   In _build_middlewares(), add agent_config parameter:
+
+       def _build_middlewares(
+           config: RunnableConfig,
+           model_name: str | None,
+           agent_name: str | None = None,
+           agent_config: AgentConfig | None = None,   # <-- ADD THIS
+           custom_middlewares: list[AgentMiddleware] | None = None,
+           *,
+           app_config: AppConfig | None = None,
+       ):
+
+   And update the call site in make_lead_agent():
+
+       middleware=_build_middlewares(
+           config,
+           model_name=model_name,
+           agent_name=agent_name,
+           agent_config=agent_config,        # <-- ADD THIS
+           app_config=resolved_app_config,
+       ),

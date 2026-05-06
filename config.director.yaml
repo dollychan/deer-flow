@@ -1,0 +1,150 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Director Agent — config.yaml additions
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# INSTRUCTIONS: Merge these sections into your existing config.yaml.
+# Each section is clearly labeled with where it belongs.
+#
+# The `tools:` list already exists in config.yaml — append the entries below.
+# The `subagents:` section may already exist — merge the custom_agents block.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# APPEND TO: tools:
+# ══════════════════════════════════════════════════════════════════════════════
+tools:
+
+  # ── Image Generation ────────────────────────────────────────────────────────
+
+  # Primary image generation tool.
+  # Provider is resolved from config (field below) then env vars.
+  # Available providers: openai, stability, kling
+  # Required env:
+  #   openai:     OPENAI_API_KEY
+  #   stability:  STABILITY_API_KEY
+  #   kling:      KLING_ACCESS_KEY + KLING_SECRET_KEY
+  - name: generate_image
+    group: media
+    use: deerflow.community.media_generation.image_tools:generate_image_tool
+    provider: openai         # Change to: stability | kling
+    default_size: "1024x1024"
+    default_quality: standard
+
+  # Image-to-image style transfer / variation (requires Stability AI).
+  - name: generate_image_from_image
+    group: media
+    use: deerflow.community.media_generation.image_tools:generate_image_from_image_tool
+
+  # Download a remote media file (image or video URL) to sandbox outputs.
+  - name: download_media
+    group: media
+    use: deerflow.community.media_generation.image_tools:download_media_tool
+
+  # ── Video Generation ─────────────────────────────────────────────────────────
+
+  # Text-to-video generation (async — returns task_id immediately).
+  # Supported providers: kling, runway, wan21, luma
+  # Required env (based on provider):
+  #   kling:   KLING_ACCESS_KEY + KLING_SECRET_KEY
+  #   runway:  RUNWAY_API_KEY
+  #   wan21:   ALIBABA_DASHSCOPE_API_KEY
+  #   luma:    LUMAAI_API_KEY
+  - name: generate_video_from_text
+    group: media
+    use: deerflow.community.media_generation.video_tools:generate_video_from_text_tool
+    provider: kling          # Change to: runway | wan21 | luma
+
+  # Image-to-video animation (async — returns task_id immediately).
+  # Supported providers: kling, runway, luma (NOT wan21)
+  - name: generate_video_from_image
+    group: media
+    use: deerflow.community.media_generation.video_tools:generate_video_from_image_tool
+    provider: kling          # Change to: runway | luma
+
+  # Poll for async video generation task status and download result.
+  - name: check_media_task
+    group: media
+    use: deerflow.community.media_generation.video_tools:check_media_task_tool
+
+  # ── Video Editing (FFmpeg — no API key required) ────────────────────────────
+
+  # Inspect video file metadata: duration, resolution, codec, fps, audio.
+  - name: get_video_info
+    group: media:edit
+    use: deerflow.community.media_generation.video_edit_tools:get_video_info_tool
+
+  # Trim a video clip to a time range.
+  - name: trim_video
+    group: media:edit
+    use: deerflow.community.media_generation.video_edit_tools:trim_video_tool
+
+  # Concatenate multiple video clips into one.
+  - name: merge_videos
+    group: media:edit
+    use: deerflow.community.media_generation.video_edit_tools:merge_videos_tool
+
+  # Add / replace / mix an audio track (voiceover, music).
+  - name: add_audio_to_video
+    group: media:edit
+    use: deerflow.community.media_generation.video_edit_tools:add_audio_to_video_tool
+
+  # Burn SRT subtitles into video.
+  - name: add_subtitles_to_video
+    group: media:edit
+    use: deerflow.community.media_generation.video_edit_tools:add_subtitles_to_video_tool
+
+  # Create a video slideshow from images (storyboard animatic).
+  - name: create_slideshow
+    group: media:edit
+    use: deerflow.community.media_generation.video_edit_tools:create_slideshow_tool
+
+  # Extract frames from a video as image files.
+  - name: extract_video_frames
+    group: media:edit
+    use: deerflow.community.media_generation.video_edit_tools:extract_video_frames_tool
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ADD OR MERGE INTO: subagents: → custom_agents:
+# ══════════════════════════════════════════════════════════════════════════════
+subagents:
+  custom_agents:
+
+    # Director subagent — spawned by the lead agent when media production tasks
+    # need to run autonomously (e.g., generate 8 scene images in parallel via task tool).
+    director-media:
+      description: >
+        Specialized media production subagent for the Director workflow.
+        Use when: generating multiple scene images in parallel, animating a batch
+        of video clips, assembling a multi-scene video, or executing a complete
+        Phase 3/4/5 of the storyboard-to-video pipeline autonomously.
+      system_prompt: |
+        You are the Director Media Subagent — a specialized worker for image and
+        video production tasks. You have been delegated a specific media production
+        task by the Director Agent.
+
+        <guidelines>
+        - Execute the delegated task autonomously using available media tools
+        - Generate images or submit video jobs as specified
+        - Track all task_ids from video generation in your response
+        - Download completed assets to /mnt/user-data/outputs/
+        - Report: what was generated, file paths, any pending task_ids to poll
+        - Do NOT ask for clarification — work with the instructions given
+        - Use parallel tool calls where possible (e.g., multiple generate_image calls)
+        </guidelines>
+
+        <working_directory>
+        - Outputs: /mnt/user-data/outputs/
+        - Workspace: /mnt/user-data/workspace/
+        - Uploads: /mnt/user-data/uploads/
+        </working_directory>
+      tools: null               # Inherit all tools (including media group)
+      disallowed_tools:
+        - task                  # No nested subagents
+        - ask_clarification     # No clarification — work autonomously
+      skills:
+        - director              # Load director skill for workflow guidance
+      model: inherit
+      max_turns: 50
+      timeout_seconds: 1800     # 30 min — video generation can take time
